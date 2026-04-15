@@ -604,9 +604,7 @@ const CityRenderer = (() => {
         if (!projectileSprite) return;
 
         GameState.wave.projectiles.forEach(proj => {
-            const px_ = proj._curX !== undefined ? proj._curX : proj.fromX;
-            const pz = proj._curZ !== undefined ? proj._curZ : proj.fromZ;
-            const pos = worldToCanvas(px_, pz);
+            const pos = worldToCanvas(proj._curX, proj._curZ);
 
             const size = cellSize * 0.2;
 

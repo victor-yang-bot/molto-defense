@@ -447,9 +447,8 @@ function updateWave(dt) {
             GameState.wave.towerCooldowns[building.id] = type.fireRate / building.level;
             GameState.wave.projectiles.push({
                 id: GameState.nextProjectileId++,
-                fromX: wp.x,
-                fromZ: wp.z,
-                fromY: BUILDING_TYPES.torre.height * building.level,
+                _curX: wp.x,
+                _curZ: wp.z,
                 targetEnemyId: closest.id,
                 speed: 8,
                 damage: type.damage * building.level,
@@ -465,8 +464,7 @@ function updateWave(dt) {
 
         const dx = target.x - proj._curX;
         const dz = target.z - proj._curZ;
-        const dy = (target.size + 0.3) - proj._curY;
-        const dist = Math.sqrt(dx * dx + dz * dz + dy * dy);
+        const dist = Math.sqrt(dx * dx + dz * dz);
 
         if (dist < 0.3) {
             // Hit!
@@ -484,9 +482,8 @@ function updateWave(dt) {
         }
 
         const step = proj.speed * dt;
-        proj._curX = (proj._curX || proj.fromX) + (dx / dist) * step;
-        proj._curY = (proj._curY || proj.fromY) + (dy / dist) * step;
-        proj._curZ = (proj._curZ || proj.fromZ) + (dz / dist) * step;
+        proj._curX += (dx / dist) * step;
+        proj._curZ += (dz / dist) * step;
 
         return true;
     });
