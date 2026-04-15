@@ -468,50 +468,167 @@ const CityRenderer = (() => {
     }
 
     // ============================================================
-    // Enemy Meshes (with HP bar)
+    // Enemy Meshes (Zombie humanoids with walk animation)
     // ============================================================
 
-    function createEnemyMesh(enemy) {
+    // Shared materials for performance
+    const zombieMaterials = {
+        skin: new THREE.MeshStandardMaterial({ color: 0x5a7a5a, roughness: 0.8, metalness: 0.1 }),
+        darkSkin: new THREE.MeshStandardMaterial({ color: 0x3d5c3d, roughness: 0.8, metalness: 0.1 }),
+        clothes: new THREE.MeshStandardMaterial({ color: 0x4a4a5a, roughness: 0.9, metalness: 0.0 }),
+        tornClothes: new THREE.MeshStandardMaterial({ color: 0x3a3a3a, roughness: 0.9, metalness: 0.0 }),
+        eyes: new THREE.MeshBasicMaterial({ color: 0xffcc00 }),
+        mouth: new THREE.MeshBasicMaterial({ color: 0x2a1a0a }),
+    };
+
+    // Color variations for zombie skins
+    const zombieColors = [
+        { skin: 0x5a7a5a, clothes: 0x4a4a5a },  // green-grey
+        { skin: 0x6b7a5a, clothes: 0x5a4a3a },  // olive
+        { skin: 0x4a6a6a, clothes: 0x3a3a4a },  // teal-grey
+        { skin: 0x7a6a5a, clothes: 0x4a3a3a },  // brownish
+        { skin: 0x5a5a6a, clothes: 0x3a4a3a },  // purple-grey
+        { skin: 0x4a7a4a, clothes: 0x2a2a3a },  // classic green
+    ];
+
+    function createZombieMesh(enemy) {
         const group = new THREE.Group();
         group.userData.enemyId = enemy.id;
+        const s = enemy.scale || 1.0;
 
-        const body = new THREE.Mesh(
-            new THREE.SphereGeometry(enemy.size, 8, 6),
-            new THREE.MeshStandardMaterial({
-                color: enemy.color, roughness: 0.5, metalness: 0.3,
-                emissive: enemy.color, emissiveIntensity: 0.2,
-            })
-        );
-        body.castShadow = true;
-        group.add(body);
+        // Pick a random color variation (seeded by id)
+        const colorIdx = Math.abs(enemy.id.charCodeAt(3) + enemy.id.charCodeAt(5)) % zombieColors.length;
+        const colors = zombieColors[colorIdx];
+        const skinMat = new THREE.MeshStandardMaterial({ color: colors.skin, roughness: 0.8, metalness: 0.1 });
+        const clothMat = new THREE.MeshStandardMaterial({ color: colors.clothes, roughness: 0.9 });
+        const darkMat = new THREE.MeshStandardMaterial({ color: 0x1a1a2e, roughness: 0.8 });
 
-        // Eyes
-        const eyeMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
-        const eyeGeo = new THREE.SphereGeometry(0.06, 6, 6);
-        const eye1 = new THREE.Mesh(eyeGeo, eyeMat);
-        eye1.position.set(0.12, 0.1, -enemy.size * 0.75);
+        // Torso
+        const torso = new THREE.Mesh(new THREE.BoxGeometry(0.3 * s, 0.5 * s, 0.2 * s), clothMat);
+        torso.position.y = 0.65 * s;
+        torso.castShadow = true;
+        group.add(torso);
+
+        // Head
+        const head = new THREE.Mesh(new THREE.BoxGeometry(0.22 * s, 0.25 * s, 0.22 * s), skinMat);
+        head.position.y = 1.05 * s;
+        head.castShadow = true;
+        group.add(head);
+
+        // Eyes (glowing yellow)
+        const eyeGeo = new THREE.BoxGeometry(0.05 * s, 0.04 * s, 0.02 * s);
+        const eye1 = new THREE.Mesh(eyeGeo, zombieMaterials.eyes);
+        eye1.position.set(-0.06 * s, 1.08 * s, -0.11 * s);
         group.add(eye1);
-        const eye2 = new THREE.Mesh(eyeGeo, eyeMat);
-        eye2.position.set(-0.12, 0.1, -enemy.size * 0.75);
+        const eye2 = new THREE.Mesh(eyeGeo, zombieMaterials.eyes);
+        eye2.position.set(0.06 * s, 1.08 * s, -0.11 * s);
         group.add(eye2);
 
-        // Pupil
-        const pupilMat = new THREE.MeshBasicMaterial({ color: 0x000000 });
-        const pupilGeo = new THREE.SphereGeometry(0.03, 4, 4);
-        const p1 = new THREE.Mesh(pupilGeo, pupilMat);
-        p1.position.set(0.12, 0.1, -enemy.size * 0.82);
-        group.add(p1);
-        const p2 = new THREE.Mesh(pupilGeo, pupilMat);
-        p2.position.set(-0.12, 0.1, -enemy.size * 0.82);
-        group.add(p2);
+        // Mouth
+        const mouth = new THREE.Mesh(new THREE.BoxGeometry(0.1 * s, 0.03 * s, 0.02 * s), zombieMaterials.mouth);
+        mouth.position.set(0, 0.98 * s, -0.11 * s);
+        group.add(mouth);
+
+        // Left arm (will be animated)
+        const leftArm = new THREE.Group();
+        leftArm.position.set(-0.22 * s, 0.85 * s, 0);
+        const leftArmMesh = new THREE.Mesh(new THREE.BoxGeometry(0.1 * s, 0.4 * s, 0.1 * s), skinMat);
+        leftArmMesh.position.y = -0.2 * s;
+        leftArmMesh.castShadow = true;
+        leftArm.add(leftArmMesh);
+        // Forearm
+        const leftForearm = new THREE.Mesh(new THREE.BoxGeometry(0.08 * s, 0.35 * s, 0.08 * s), skinMat);
+        leftForearm.position.y = -0.4 * s;
+        leftForearm.position.z = 0.05 * s;
+        leftForearm.castShadow = true;
+        leftArm.add(leftForearm);
+        group.add(leftArm);
+
+        // Right arm (extended forward like a zombie!)
+        const rightArm = new THREE.Group();
+        rightArm.position.set(0.22 * s, 0.85 * s, 0);
+        const rightArmMesh = new THREE.Mesh(new THREE.BoxGeometry(0.1 * s, 0.35 * s, 0.1 * s), skinMat);
+        rightArmMesh.position.y = -0.17 * s;
+        rightArmMesh.castShadow = true;
+        rightArm.add(rightArmMesh);
+        const rightForearm = new THREE.Mesh(new THREE.BoxGeometry(0.08 * s, 0.3 * s, 0.08 * s), skinMat);
+        rightForearm.position.y = -0.35 * s;
+        rightForearm.position.z = -0.15 * s;
+        rightForearm.rotation.x = -0.5;
+        rightForearm.castShadow = true;
+        rightArm.add(rightForearm);
+        group.add(rightArm);
+
+        // Hips
+        const hips = new THREE.Mesh(new THREE.BoxGeometry(0.28 * s, 0.15 * s, 0.18 * s), clothMat);
+        hips.position.y = 0.35 * s;
+        hips.castShadow = true;
+        group.add(hips);
+
+        // Left leg (will be animated)
+        const leftLeg = new THREE.Group();
+        leftLeg.position.set(-0.1 * s, 0.28 * s, 0);
+        const leftLegMesh = new THREE.Mesh(new THREE.BoxGeometry(0.12 * s, 0.35 * s, 0.12 * s), clothMat);
+        leftLegMesh.position.y = -0.17 * s;
+        leftLegMesh.castShadow = true;
+        leftLeg.add(leftLegMesh);
+        const leftShin = new THREE.Mesh(new THREE.BoxGeometry(0.1 * s, 0.3 * s, 0.1 * s), darkMat);
+        leftShin.position.y = -0.35 * s;
+        leftShin.castShadow = true;
+        leftLeg.add(leftShin);
+        group.add(leftLeg);
+
+        // Right leg (will be animated)
+        const rightLeg = new THREE.Group();
+        rightLeg.position.set(0.1 * s, 0.28 * s, 0);
+        const rightLegMesh = new THREE.Mesh(new THREE.BoxGeometry(0.12 * s, 0.35 * s, 0.12 * s), clothMat);
+        rightLegMesh.position.y = -0.17 * s;
+        rightLegMesh.castShadow = true;
+        rightLeg.add(rightLegMesh);
+        const rightShin = new THREE.Mesh(new THREE.BoxGeometry(0.1 * s, 0.3 * s, 0.1 * s), darkMat);
+        rightShin.position.y = -0.35 * s;
+        rightShin.castShadow = true;
+        rightLeg.add(rightShin);
+        group.add(rightLeg);
+
+        // Store refs for animation
+        group.userData.leftArm = leftArm;
+        group.userData.rightArm = rightArm;
+        group.userData.leftLeg = leftLeg;
+        group.userData.rightLeg = rightLeg;
+        group.userData.head = head;
+        group.userData.torso = torso;
+        group.userData.animPhase = enemy.animPhase || 0;
+
+        // Boss gets a crown/horns
+        if (enemy.type === 'boss') {
+            const horn1 = new THREE.Mesh(new THREE.ConeGeometry(0.05 * s, 0.2 * s, 4),
+                new THREE.MeshStandardMaterial({ color: 0x8b0000, emissive: 0x440000, emissiveIntensity: 0.3 }));
+            horn1.position.set(-0.08 * s, 1.22 * s, 0);
+            group.add(horn1);
+            const horn2 = new THREE.Mesh(new THREE.ConeGeometry(0.05 * s, 0.2 * s, 4),
+                new THREE.MeshStandardMaterial({ color: 0x8b0000, emissive: 0x440000, emissiveIntensity: 0.3 }));
+            horn2.position.set(0.08 * s, 1.22 * s, 0);
+            group.add(horn2);
+        }
+
+        // Runner gets a lean
+        if (enemy.type === 'runner') {
+            torso.rotation.x = 0.2;
+            head.rotation.x = 0.15;
+        }
 
         // HP bar
-        const hpBar = createEnemyHPBar(enemy.hp, enemy.maxHp, enemy.size + 0.5);
+        const hpBar = createEnemyHPBar(enemy.hp, enemy.maxHp, enemy.size + 0.8);
         group.add(hpBar.container);
         group.userData.hpBar = hpBar;
 
         scene.add(group);
         return group;
+    }
+
+    function createEnemyMesh(enemy) {
+        return createZombieMesh(enemy);
     }
 
     function createEnemyHPBar(current, max, yOffset) {
@@ -631,10 +748,39 @@ const CityRenderer = (() => {
             const mesh = enemyMeshes[enemy.id];
             mesh.position.x = enemy.x;
             mesh.position.z = enemy.z;
-            mesh.position.y = enemy.size + Math.sin(time * 5 + enemy.x) * 0.1;
+            mesh.position.y = 0; // feet on ground
+
+            // Face movement direction
             if (enemy.dx !== undefined) {
                 mesh.rotation.y = Math.atan2(enemy.dx, enemy.dz);
             }
+
+            // Zombie walk animation
+            const phase = (enemy.animPhase || 0) + time * enemy.speed * 4;
+            const ud = mesh.userData;
+
+            // Leg swing (zombie shuffle)
+            if (ud.leftLeg) ud.leftLeg.rotation.x = Math.sin(phase) * 0.4;
+            if (ud.rightLeg) ud.rightLeg.rotation.x = Math.sin(phase + Math.PI) * 0.4;
+
+            // Arm swing (zombie arms sway)
+            if (ud.leftArm) ud.leftArm.rotation.x = Math.sin(phase + Math.PI) * 0.3;
+            if (ud.rightArm) ud.rightArm.rotation.x = Math.sin(phase) * 0.25 - 0.4; // always slightly forward
+
+            // Head bob and tilt
+            if (ud.head) {
+                ud.head.rotation.z = Math.sin(phase * 0.7) * 0.1;
+                ud.head.rotation.x = Math.sin(phase * 0.5) * 0.05 - 0.1;
+            }
+
+            // Torso sway
+            if (ud.torso) {
+                ud.torso.rotation.z = Math.sin(phase * 0.5) * 0.05;
+            }
+
+            // Body bob up/down with walk cycle
+            mesh.position.y = Math.abs(Math.sin(phase * 2)) * 0.05;
+
             updateEnemyHP(enemy, mesh);
         });
     }
@@ -706,7 +852,7 @@ const CityRenderer = (() => {
                 <div>❤️ HP: <span style="color:#ef4444">${Math.floor(e.hp)}/${e.maxHp}</span></div>
                 <div>⚔️ DMG: <span style="color:#fbbf24">${e.damage}</span></div>
                 <div>💨 Vel: <span style="color:#60a5fa">${e.speed.toFixed(1)}</span></div>
-                <div style="color:#9ca3af;margin-top:4px;font-size:10px">Oleada ${GameState.wave.current}</div>
+                <div style="color:#9ca3af;margin-top:4px;font-size:10px">Oleada ${GameState.wave.current} 🧟</div>
             `;
         }
     }

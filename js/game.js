@@ -66,10 +66,11 @@ const BUILDING_TYPES = {
 };
 
 const ENEMY_TYPES = {
-    goblin:    { id: 'goblin',    name: 'Goblin',    emoji: '👺', hp: 60,  speed: 1.2, damage: 5,  reward: { gold: 30 },             color: 0x65a30d, size: 0.4 },
-    esqueleto: { id: 'esqueleto', name: 'Esqueleto', emoji: '💀', hp: 40,  speed: 2.0, damage: 8,  reward: { gold: 20 },             color: 0xd4d4d4, size: 0.35 },
-    orco:      { id: 'orco',      name: 'Orco',      emoji: '👹', hp: 200, speed: 0.7, damage: 15, reward: { gold: 80 },             color: 0x854d0e, size: 0.6 },
-    dragon:    { id: 'dragon',    name: 'Dragón',    emoji: '🐉', hp: 600, speed: 0.9, damage: 40, reward: { gold: 200, gems: 10 },   color: 0xdc2626, size: 0.8 },
+    zombie:     { id: 'zombie',     name: 'Zombie',      emoji: '🧟', hp: 80,  speed: 1.0, damage: 8,  reward: { gold: 20 },           color: 0x4a7a4a, size: 0.45, scale: 1.0 },
+    runner:     { id: 'runner',     name: 'Corredor',    emoji: '🏃', hp: 40,  speed: 2.2, damage: 5,  reward: { gold: 25 },           color: 0x6b8e6b, size: 0.4,  scale: 0.9 },
+    tank:       { id: 'tank',       name: 'Tanque',      emoji: '🦍', hp: 300, speed: 0.5, damage: 20, reward: { gold: 60 },           color: 0x3d5c3d, size: 0.65, scale: 1.4 },
+    spitter:    { id: 'spitter',    name: 'Escupidor',   emoji: '🤮', hp: 60,  speed: 0.8, damage: 12, reward: { gold: 35 },           color: 0x5a8a3a, size: 0.45, scale: 1.0 },
+    boss:       { id: 'boss',       name: 'Jefe Zombie', emoji: '💀', hp: 800, speed: 0.6, damage: 30, reward: { gold: 200, gems: 5 }, color: 0x2d4a2d, size: 0.85, scale: 1.8 },
 };
 
 // ============================================================
@@ -293,17 +294,19 @@ function demolishBuilding(buildingId) {
 
 function generateWave(waveNum) {
     const enemies = [];
-    const baseCount = 3 + Math.floor(waveNum * 1.5);
-    const available = ['goblin'];
-    if (waveNum >= 3) available.push('esqueleto');
-    if (waveNum >= 5) available.push('orco');
-    if (waveNum >= 8) available.push('dragon');
+    // Many more zombies! Ramp up quickly
+    const baseCount = 5 + Math.floor(waveNum * 3);
+    const available = ['zombie', 'zombie', 'zombie']; // mostly regular zombies
+    if (waveNum >= 2) available.push('runner');
+    if (waveNum >= 4) available.push('spitter');
+    if (waveNum >= 6) available.push('tank');
+    if (waveNum >= 10 && waveNum % 3 === 0) available.push('boss');
 
     for (let i = 0; i < baseCount; i++) {
         const typeId = available[Math.floor(Math.random() * available.length)];
         const t = ENEMY_TYPES[typeId];
-        const hpScale = 1 + (waveNum - 1) * 0.3;
-        const dmgScale = 1 + (waveNum - 1) * 0.15;
+        const hpScale = 1 + (waveNum - 1) * 0.25;
+        const dmgScale = 1 + (waveNum - 1) * 0.12;
         enemies.push({
             id: `e_${Date.now()}_${i}`,
             type: typeId,
@@ -314,9 +317,11 @@ function generateWave(waveNum) {
             reward: { ...t.reward },
             color: t.color,
             size: t.size,
+            scale: t.scale || 1.0,
             x: 0, z: 0,
             targetBuilding: null,
             alive: true,
+            animPhase: Math.random() * Math.PI * 2, // stagger animations
         });
     }
     return enemies;
@@ -363,22 +368,45 @@ function updateWave(dt) {
 
     const g = GameState.gridSize;
 
-    // Move enemies
+    // Move enemies — steer toward nearest building
     GameState.wave.enemies.forEach(enemy => {
         if (!enemy.alive) return;
+
+        // Re-target periodically or if no target
+        if (!enemy.targetBuilding || Math.random() < 0.01) {
+            if (GameState.buildings.length > 0) {
+                let nearest = null;
+                let nearDist = Infinity;
+                for (const b of GameState.buildings) {
+                    const wp = getWorldPosFromGrid(b.gridPos.x, b.gridPos.z);
+                    const d = Math.sqrt(Math.pow(enemy.x - wp.x, 2) + Math.pow(enemy.z - wp.z, 2));
+                    if (d < nearDist) { nearest = b; nearDist = d; }
+                }
+                if (nearest) {
+                    enemy.targetBuilding = nearest.id;
+                    const wp = getWorldPosFromGrid(nearest.gridPos.x, nearest.gridPos.z);
+                    const angle = Math.atan2(wp.z - enemy.z, wp.x - enemy.x);
+                    enemy.dx = Math.cos(angle) * enemy.speed * 0.02;
+                    enemy.dz = Math.sin(angle) * enemy.speed * 0.02;
+                }
+            }
+        }
+
         enemy.x += enemy.dx;
         enemy.z += enemy.dz;
-        const distToCenter = Math.sqrt(enemy.x * enemy.x + enemy.z * enemy.z);
-        if (distToCenter < 1.5) {
-            if (GameState.buildings.length > 0) {
-                const target = GameState.buildings[Math.floor(Math.random() * GameState.buildings.length)];
+
+        // Check collision with buildings
+        for (let i = GameState.buildings.length - 1; i >= 0; i--) {
+            const target = GameState.buildings[i];
+            const wp = getWorldPosFromGrid(target.gridPos.x, target.gridPos.z);
+            const dist = Math.sqrt(Math.pow(enemy.x - wp.x, 2) + Math.pow(enemy.z - wp.z, 2));
+            if (dist < 0.8) {
                 target.hp -= enemy.damage * dt;
                 if (target.hp <= 0) {
                     delete GameState.grid[`${target.gridPos.x},${target.gridPos.z}`];
-                    const idx = GameState.buildings.indexOf(target);
-                    if (idx > -1) GameState.buildings.splice(idx, 1);
+                    GameState.buildings.splice(i, 1);
                     GameState.grid = {};
-                    GameState.buildings.forEach((b, i) => { GameState.grid[`${b.gridPos.x},${b.gridPos.z}`] = i; });
+                    GameState.buildings.forEach((b, idx) => { GameState.grid[`${b.gridPos.x},${b.gridPos.z}`] = idx; });
                     GameState.stats.buildingsDestroyed++;
                     GameState.currentPop = getCurrentPop();
                     GameState.maxPop = getMaxPop();
@@ -386,7 +414,13 @@ function updateWave(dt) {
                         GameState.wave.enemies.forEach(e => e.alive = false);
                     }
                 }
+                enemy.alive = false;
+                break;
             }
+        }
+
+        // Remove if wandered too far
+        if (Math.abs(enemy.x) > g || Math.abs(enemy.z) > g) {
             enemy.alive = false;
         }
     });
