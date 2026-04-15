@@ -79,7 +79,6 @@ const CityRenderer = (() => {
         sun.shadow.camera.bottom = -15;
         scene.add(sun);
 
-        scene.add(new THREE.DirectionalLight(0x4488ff, 0.3).translateTo(-8, 10, -6));
         const fill = new THREE.DirectionalLight(0x4488ff, 0.3);
         fill.position.set(-8, 10, -6);
         scene.add(fill);
@@ -456,6 +455,11 @@ const CityRenderer = (() => {
         hpBar.container.visible = building.hp < building.maxHp;
         if (!hpBar.container.visible) return;
 
+        // Skip if HP hasn't changed
+        const lastRatio = hpBar._lastRatio;
+        if (lastRatio !== undefined && Math.abs(lastRatio - ratio) < 0.01) return;
+        hpBar._lastRatio = ratio;
+
         const color = ratio > 0.5 ? 0x4ade80 : ratio > 0.25 ? 0xfbbf24 : 0xef4444;
         hpBar.fill.geometry.dispose();
         hpBar.fill.geometry = new THREE.PlaneGeometry(0.7 * ratio, 0.08);
@@ -539,6 +543,11 @@ const CityRenderer = (() => {
         if (!meshGroup || !meshGroup.userData.hpBar) return;
         const ratio = Math.max(0, enemy.hp / enemy.maxHp);
         const hpBar = meshGroup.userData.hpBar;
+
+        // Skip if HP hasn't changed
+        const lastRatio = hpBar._lastRatio;
+        if (lastRatio !== undefined && Math.abs(lastRatio - ratio) < 0.01) return;
+        hpBar._lastRatio = ratio;
 
         const color = ratio > 0.5 ? 0x4ade80 : ratio > 0.25 ? 0xfbbf24 : 0xef4444;
         hpBar.fill.geometry.dispose();
@@ -631,13 +640,27 @@ const CityRenderer = (() => {
     }
 
     function syncProjectiles() {
-        // Remove old
-        projectileMeshes.forEach(m => scene.remove(m));
-        projectileMeshes = [];
+        const currentIds = new Set(GameState.wave.projectiles.map(p => p.id));
+        const renderedIds = new Set(projectileMeshes.map(m => m.userData.projId));
+
+        // Remove dead
+        for (let i = projectileMeshes.length - 1; i >= 0; i--) {
+            if (!currentIds.has(projectileMeshes[i].userData.projId)) {
+                scene.remove(projectileMeshes[i]);
+                projectileMeshes.splice(i, 1);
+            }
+        }
 
         // Add new
         GameState.wave.projectiles.forEach(proj => {
-            projectileMeshes.push(createProjectileMesh(proj));
+            const exists = projectileMeshes.find(m => m.userData.projId === proj.id);
+            if (!exists) {
+                const mesh = createProjectileMesh(proj);
+                mesh.userData.projId = proj.id;
+                projectileMeshes.push(mesh);
+            } else {
+                exists.position.set(proj._curX || proj.fromX, proj._curY || 2, proj._curZ || proj.fromZ);
+            }
         });
     }
 
@@ -700,15 +723,8 @@ const CityRenderer = (() => {
         requestAnimationFrame(animate);
         const time = clock.getElapsedTime();
 
-        // Camera orbit
-        const radius = 14;
-        const speed = 0.08;
-        camera.position.x = Math.cos(time * speed) * radius;
-        camera.position.z = Math.sin(time * speed) * radius;
-        camera.position.y = 12 + Math.sin(time * 0.15) * 2;
-        camera.lookAt(0, 0.5, 0);
-
-        // Animate building sparkles/flags
+        // Camera stays static (no orbit)
+        // sync
         Object.values(buildingMeshes).forEach(group => {
             group.children.forEach(child => {
                 if (child.userData.sparkle) child.position.y = 0.3 + Math.sin(time * 3 + child.position.x * 10) * 0.15;
