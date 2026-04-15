@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CityCore - Dashboard City Builder</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <link rel="stylesheet" href="css/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+</head>
+<body class="bg-gray-950 text-gray-100 font-sans overflow-hidden">
+
+    <!-- Top Bar -->
+    <header id="topbar" class="fixed top-0 left-0 right-0 z-50 bg-gray-900/95 backdrop-blur border-b border-gray-800 px-6 py-3 flex items-center justify-between">
+        <div class="flex items-center gap-3">
+            <span class="text-2xl">🏙️</span>
+            <h1 class="font-orbitron text-xl font-bold bg-gradient-to-r from-amber-400 to-orange-500 bg-clip-text text-transparent">CityCore</h1>
+        </div>
+        <div id="resources" class="flex items-center gap-6 text-sm font-semibold">
+            <div class="resource-item flex items-center gap-2" title="Oro">
+                <span class="text-xl">🪙</span>
+                <span id="res-gold" class="text-amber-400 font-mono">0</span>
+                <span class="text-gray-500 text-xs">(+0/s)</span>
+            </div>
+            <div class="resource-item flex items-center gap-2" title="Gemas">
+                <span class="text-xl">💎</span>
+                <span id="res-gems" class="text-cyan-400 font-mono">0</span>
+                <span class="text-gray-500 text-xs">(+0/s)</span>
+            </div>
+            <div class="resource-item flex items-center gap-2" title="Comida">
+                <span class="text-xl">🌾</span>
+                <span id="res-food" class="text-green-400 font-mono">0</span>
+                <span class="text-gray-500 text-xs">(+0/s)</span>
+            </div>
+            <div class="resource-item flex items-center gap-2" title="Población">
+                <span class="text-xl">👥</span>
+                <span id="res-pop" class="text-purple-400 font-mono">0</span>
+                <span class="text-gray-500 text-xs">/ <span id="res-pop-max">0</span></span>
+            </div>
+        </div>
+        <div class="flex items-center gap-4">
+            <div id="wave-timer" class="hidden bg-red-900/50 border border-red-700 rounded-lg px-4 py-1 text-red-300 font-mono text-sm animate-pulse">
+                ⚔️ Oleada en <span id="wave-countdown">30</span>s
+            </div>
+            <button id="btn-save" class="bg-gray-800 hover:bg-gray-700 px-3 py-1.5 rounded-lg text-xs transition">💾 Guardar</button>
+        </div>
+    </header>
+
+    <!-- Main Layout -->
+    <div class="flex pt-14 h-screen">
+
+        <!-- Left Panel: Dashboard -->
+        <aside id="dashboard" class="w-96 bg-gray-900/80 backdrop-blur border-r border-gray-800 flex flex-col overflow-y-auto">
+
+            <!-- Tabs -->
+            <div class="flex border-b border-gray-800 bg-gray-900 sticky top-0 z-10">
+                <button class="tab-btn active px-4 py-3 text-sm font-semibold transition" data-tab="build">🏗️ Construir</button>
+                <button class="tab-btn px-4 py-3 text-sm font-semibold transition" data-tab="manage">📋 Gestionar</button>
+                <button class="tab-btn px-4 py-3 text-sm font-semibold transition" data-tab="defense">⚔️ Defensa</button>
+                <button class="tab-btn px-4 py-3 text-sm font-semibold transition" data-tab="stats">📊 Stats</button>
+            </div>
+
+            <!-- Tab: Build -->
+            <div id="tab-build" class="tab-content p-4 space-y-3">
+                <h2 class="text-lg font-bold text-gray-200 mb-2">Construir Edificio</h2>
+                <div id="build-grid" class="grid grid-cols-1 gap-3">
+                    <!-- Populated by JS -->
+                </div>
+            </div>
+
+            <!-- Tab: Manage -->
+            <div id="tab-manage" class="tab-content hidden p-4 space-y-3">
+                <h2 class="text-lg font-bold text-gray-200 mb-2">Tus Edificios</h2>
+                <div id="manage-list" class="space-y-2">
+                    <p class="text-gray-500 text-sm text-center py-8">No tenés edificios aún. ¡Empezá a construir!</p>
+                </div>
+            </div>
+
+            <!-- Tab: Defense -->
+            <div id="tab-defense" class="tab-content hidden p-4 space-y-3">
+                <h2 class="text-lg font-bold text-gray-200 mb-2">Estado de Defensa</h2>
+                <div id="defense-info" class="space-y-3">
+                    <!-- Populated by JS -->
+                </div>
+                <div class="border-t border-gray-800 pt-4">
+                    <h3 class="text-sm font-bold text-gray-300 mb-2">Historial de Oleadas</h3>
+                    <div id="wave-history" class="space-y-1 max-h-48 overflow-y-auto text-xs">
+                        <p class="text-gray-500 text-center py-4">Sin oleadas aún</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tab: Stats -->
+            <div id="tab-stats" class="tab-content hidden p-4 space-y-3">
+                <h2 class="text-lg font-bold text-gray-200 mb-2">Estadísticas</h2>
+                <div id="stats-content" class="space-y-2">
+                    <!-- Populated by JS -->
+                </div>
+            </div>
+        </aside>
+
+        <!-- Center: 3D City View -->
+        <main class="flex-1 relative">
+            <div id="city-canvas" class="w-full h-full"></div>
+            <!-- Overlay info -->
+            <div class="absolute bottom-4 left-4 bg-gray-900/80 backdrop-blur rounded-xl px-4 py-3 text-xs text-gray-400 border border-gray-800">
+                <p>🖱️ Rotación automática · Vista read-only</p>
+                <p class="mt-1">Edificios: <span id="overlay-buildings">0</span> · Defensa: <span id="overlay-defense">0</span> · Oleada: <span id="overlay-wave">0</span></p>
+            </div>
+        </main>
+    </div>
+
+    <!-- Toast container -->
+    <div id="toast-container" class="fixed bottom-6 right-6 z-50 space-y-2"></div>
+
+    <!-- Scripts -->
+    <script src="js/game.js"></script>
+    <script src="js/city.js"></script>
+    <script src="js/ui.js"></script>
+</body>
+</html>
