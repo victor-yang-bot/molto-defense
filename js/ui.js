@@ -350,18 +350,24 @@ const UI = (() => {
 // Bootstrap
 // ============================================================
 
-window.addEventListener('DOMContentLoaded', () => {
-    const loaded = loadGame();
+window.addEventListener('DOMContentLoaded', async () => {
+    const loaded = await loadGame();
     CityRenderer.init();
     UI.init();
 
     if (window._offlineEarnings) {
         const e = window._offlineEarnings;
         const minutes = Math.floor(e.seconds / 60);
-        UI.showToast(`¡Bienvenido! +${UI.refreshBuildPanel ? '' : ''}${formatNumUI(e.gold)}🪙 ${formatNumUI(e.gems)}💎 ${formatNumUI(e.food)}🌾 en ${minutes}min`, 'info');
+        UI.showToast(`¡Bienvenido! +${formatNumUI(e.gold)}🪙 ${formatNumUI(e.gems)}💎 ${formatNumUI(e.food)}🌾 en ${minutes}min`, 'info');
         delete window._offlineEarnings;
     } else if (!loaded) {
         UI.showToast('¡Bienvenido a CityCore! Seleccioná un edificio y click derecho en el mapa', 'info');
+    }
+
+    // Show session ID in toast
+    const sid = getSessionId();
+    if (loaded && sid) {
+        UI.showToast(`Partida restaurada (${sid.slice(0, 8)}...)`, 'info');
     }
 
     function formatNumUI(n) {

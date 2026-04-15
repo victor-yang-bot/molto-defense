@@ -528,64 +528,160 @@ function gameTick() {
 // Save / Load
 // ============================================================
 
-function saveGame() {
-    const data = {
+// ============================================================
+// Session ID
+// ============================================================
+
+function generateSessionId() {
+    const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    const arr = crypto.getRandomValues(new Uint8Array(24));
+    return Array.from(arr, b => chars[b % chars.length]).join('');
+}
+
+function getSessionId() {
+    if (!GameState.sessionId) {
+        // Check URL hash first, then create new
+        const hash = window.location.hash.slice(1);
+        if (hash && hash.length >= 16) {
+            GameState.sessionId = hash;
+        } else {
+            GameState.sessionId = generateSessionId();
+            window.location.hash = GameState.sessionId;
+        }
+    }
+    return GameState.sessionId;
+}
+
+// ============================================================
+// Serialize / Deserialize full state
+// ============================================================
+
+function serializeState() {
+    return {
         resources: GameState.resources,
         buildings: GameState.buildings,
         gridSize: GameState.gridSize,
-        wave: { current: GameState.wave.current, interval: GameState.wave.interval, timer: GameState.wave.timer },
+        wave: {
+            current: GameState.wave.current,
+            interval: GameState.wave.interval,
+            timer: GameState.wave.timer,
+            inProgress: GameState.wave.inProgress,
+            enemies: GameState.wave.enemies.map(e => ({
+                id: e.id, type: e.type,
+                hp: e.hp, maxHp: e.maxHp,
+                speed: e.speed, damage: e.damage,
+                reward: e.reward, color: e.color,
+                size: e.size, scale: e.scale,
+                x: e.x, z: e.z,
+                dx: e.dx, dz: e.dz,
+                targetBuilding: e.targetBuilding,
+                alive: e.alive,
+                animPhase: e.animPhase,
+            })),
+            projectiles: [], // don't save mid-flight projectiles
+        },
         stats: GameState.stats,
         nextBuildingId: GameState.nextBuildingId,
         savedAt: Date.now(),
     };
-    localStorage.setItem('citycore_save', JSON.stringify(data));
 }
 
-function loadGame() {
+function deserializeState(data) {
+    GameState.resources = data.resources || GameState.resources;
+    GameState.buildings = data.buildings || [];
+    GameState.gridSize = data.gridSize || 12;
+    GameState.wave.current = data.wave?.current || 0;
+    GameState.wave.interval = data.wave?.interval || 60;
+    GameState.wave.timer = data.wave?.timer || 60;
+    GameState.wave.inProgress = data.wave?.inProgress || false;
+    GameState.wave.enemies = data.wave?.enemies || [];
+    GameState.wave.projectiles = [];
+    GameState.wave.towerCooldowns = {};
+    GameState.stats = data.stats || GameState.stats;
+    GameState.nextBuildingId = data.nextBuildingId || 1;
+
+    if (data.savedAt) {
+        const offSec = Math.min((Date.now() - data.savedAt) / 1000, 3600 * 8);
+        const rates = getProductionRates();
+        const offGold = rates.gold * offSec;
+        const offGems = rates.gems * offSec;
+        const offFood = rates.food * offSec;
+        if (offGold > 0 || offGems > 0) {
+            GameState.resources.gold += offGold;
+            GameState.resources.gems += offGems;
+            GameState.resources.food += offFood;
+            GameState.stats.totalGoldEarned += offGold;
+            GameState.stats.totalGemsEarned += offGems;
+            window._offlineEarnings = {
+                gold: Math.floor(offGold), gems: Math.floor(offGems),
+                food: Math.floor(offFood), seconds: Math.floor(offSec),
+            };
+        }
+    }
+
+    GameState.grid = {};
+    GameState.buildings.forEach((b, i) => { GameState.grid[`${b.gridPos.x},${b.gridPos.z}`] = i; });
+    GameState.currentPop = getCurrentPop();
+    GameState.maxPop = getMaxPop();
+    GameState.lastTick = Date.now();
+    GameState.lastSave = Date.now();
+}
+
+// ============================================================
+// Save / Load (localStorage + server)
+// ============================================================
+
+async function saveGame() {
+    const data = serializeState();
+    const json = JSON.stringify(data);
+
+    // Local fallback
+    localStorage.setItem('citycore_save', json);
+
+    // Server save (fire and forget)
+    const sessionId = getSessionId();
+    try {
+        await fetch('/api/session', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ sessionId, data }),
+        });
+    } catch (e) {
+        // Server save failed, local save is enough
+    }
+}
+
+async function loadGame() {
+    const sessionId = getSessionId();
+
+    // Try server first
+    try {
+        const res = await fetch(`/api/session/${sessionId}`);
+        if (res.ok) {
+            const json = await res.json();
+            if (json.data) {
+                deserializeState(json.data);
+                localStorage.setItem('citycore_save', JSON.stringify(json.data));
+                return true;
+            }
+        }
+    } catch (e) {
+        // Server unavailable, try local
+    }
+
+    // Local fallback
     const raw = localStorage.getItem('citycore_save');
     if (!raw) return false;
     try {
         const data = JSON.parse(raw);
-        GameState.resources = data.resources || GameState.resources;
-        GameState.buildings = data.buildings || [];
-        GameState.gridSize = data.gridSize || 12;
-        GameState.wave.current = data.wave?.current || 0;
-        GameState.wave.interval = data.wave?.interval || 60;
-        GameState.wave.timer = data.wave?.timer || 60;
-        GameState.wave.inProgress = false;
-        GameState.wave.enemies = [];
-        GameState.wave.projectiles = [];
-        GameState.wave.towerCooldowns = {};
-        GameState.stats = data.stats || GameState.stats;
-        GameState.nextBuildingId = data.nextBuildingId || 1;
-
-        if (data.savedAt) {
-            const offSec = Math.min((Date.now() - data.savedAt) / 1000, 3600 * 8);
-            const rates = getProductionRates();
-            const offGold = rates.gold * offSec;
-            const offGems = rates.gems * offSec;
-            const offFood = rates.food * offSec;
-            if (offGold > 0 || offGems > 0) {
-                GameState.resources.gold += offGold;
-                GameState.resources.gems += offGems;
-                GameState.resources.food += offFood;
-                GameState.stats.totalGoldEarned += offGold;
-                GameState.stats.totalGemsEarned += offGems;
-                window._offlineEarnings = {
-                    gold: Math.floor(offGold), gems: Math.floor(offGems),
-                    food: Math.floor(offFood), seconds: Math.floor(offSec),
-                };
-            }
-        }
-
-        GameState.grid = {};
-        GameState.buildings.forEach((b, i) => { GameState.grid[`${b.gridPos.x},${b.gridPos.z}`] = i; });
-        GameState.currentPop = getCurrentPop();
-        GameState.maxPop = getMaxPop();
-        GameState.lastTick = Date.now();
-        GameState.lastSave = Date.now();
+        deserializeState(data);
         return true;
     } catch (e) { console.error('Load failed:', e); return false; }
 }
 
-function resetGame() { localStorage.removeItem('citycore_save'); location.reload(); }
+function resetGame() {
+    localStorage.removeItem('citycore_save');
+    GameState.sessionId = null;
+    window.location.hash = '';
+    location.reload();
+}

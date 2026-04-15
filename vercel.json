@@ -2,5 +2,9 @@
   "framework": null,
   "buildCommand": null,
   "outputDirectory": ".",
-  "cleanUrls": true
+  "cleanUrls": true,
+  "rewrites": [
+    { "source": "/api/session/:id", "destination": "/api/session/[id].js" },
+    { "source": "/api/session", "destination": "/api/session/[id].js" }
+  ]
 }
